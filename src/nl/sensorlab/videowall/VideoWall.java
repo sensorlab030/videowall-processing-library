@@ -17,7 +17,7 @@ import processing.core.PImage;
  * 
  * @example SimpleCanvasStreaming
  */
-public class LedWall {
+public class VideoWall {
     
     // Library version
     public final static String VERSION = "##library.prettyVersion##";
@@ -40,13 +40,13 @@ public class LedWall {
      * Native width for the video stream image. If you want no scaling to happen,
      * supply images of this size
      */
-    public final static int STREAM_IMAGE_WIDTH = 108;
+    public final static int STREAM_IMAGE_WIDTH = 298;
     
     /**
      * Native height for the video stream image. If you want no scaling to happen,
      * supply images of this size
      */
-    public final static int STREAM_IMAGE_HEIGHT = 26;
+    public final static int STREAM_IMAGE_HEIGHT = 81;
     
     // parent is a reference to the parent sketch
     private PApplet parent;
@@ -66,7 +66,7 @@ public class LedWall {
      * @example Hello
      * @param parent
      */
-    public LedWall(String host, int port, PApplet parent) {
+    public VideoWall(String host, int port, PApplet parent) {
         this.host = host;
         this.port = port;
         this.parent = parent;
