@@ -8,15 +8,14 @@ float speed = 2;
 float radius;
 
 void settings() {
-  // Setting the canvas to the native image size to prevent scaling which 
-  // saves performance)
-  size(VideoWall.STREAM_IMAGE_WIDTH, VideoWall.STREAM_IMAGE_HEIGHT);
+  size(800, 600);
 }
 
 void setup() {
 
-  // Initialize the videoWall stream  
+ // Initialize the videoWall stream  
   videoWall = new VideoWall("192.168.1.90", 10233, this);
+  videoWall.setScaleMode(VideoWall.CROP); // Or VideoWall.STRETCH
   videoWall.start();
   
   // Setup drawing variables

@@ -40,37 +40,66 @@ public class VideoWall {
      * Native width for the video stream image. If you want no scaling to happen,
      * supply images of this size
      */
-    public final static int STREAM_IMAGE_WIDTH = 298;
+    public final static int STREAM_IMAGE_WIDTH = 280;
     
     /**
      * Native height for the video stream image. If you want no scaling to happen,
      * supply images of this size
      */
-    public final static int STREAM_IMAGE_HEIGHT = 81;
+    public final static int STREAM_IMAGE_HEIGHT = 76;
     
-    // parent is a reference to the parent sketch
+    /**
+     * Length of the data buffer calculated as:
+     * number of pixels * 3 (3 bytes for 3 colors, RGB) + 3 bytes of the IMG start of the packet
+     */
+    private final static int BUFFER_LENGTH = STREAM_IMAGE_WIDTH * STREAM_IMAGE_HEIGHT * 3 + 3;
+    
+    /**
+     * The parent sketch
+     */
     private PApplet parent;
+    
+    /**
+     * The UDP socket, will be connected to host:port
+     */ 
     private DatagramSocket socket;  
     
-    // Network configuration
+    /**
+     * The host (host name or IP) to send the UPD packets to
+     */     
     private String host;
+    
+    /**
+     * The port to send the UDP packets to
+     */
     private int port;
     
     // Scale mode (crop or stretch)
     private int scaleMode = STRETCH;
+    
+    private byte[] buffer;
 
     /**
      * a Constructor, usually called in the setup() method in your sketch to
      * initialize and start the Library.
      * 
-     * @example Hello
-     * @param parent
+     * @example SimpleCanvasStreaming
+     * 
+     * @param host      the network host (hostname or IP) to send the UDP packets to
+     * @param port      the network port to send the UDP packets to
+     * @param parent    the parent sketch
      */
     public VideoWall(String host, int port, PApplet parent) {
         this.host = host;
         this.port = port;
         this.parent = parent;
         parent.registerMethod("dispose", this);
+        
+        // Initialize buffer with packet header
+        buffer = new byte[BUFFER_LENGTH];
+        buffer[0] = 0x49; // I
+        buffer[1] = 0x4D; // M
+        buffer[2] = 0x47; // G
     }
     
     /**
@@ -115,33 +144,45 @@ public class VideoWall {
             return;
         }
         
-        // Initialize image
-        PImage streamImage = parent.createImage(STREAM_IMAGE_WIDTH, STREAM_IMAGE_HEIGHT, PConstants.RGB);
+        // Create stream image from supplied image
+        PImage streamImage = parent.createImage(STREAM_IMAGE_WIDTH, STREAM_IMAGE_HEIGHT, PConstants.RGB);        
+        if (image.width == STREAM_IMAGE_WIDTH && image.height == STREAM_IMAGE_HEIGHT) {
+          
+          // Native size, no scaling needed
+          streamImage = image.copy();
+          
+        } else if (scaleMode == CROP) {
+          
+          // Crop center portion of the iamge
+          streamImage.copy(image, 
+                        image.width / 2 - STREAM_IMAGE_WIDTH / 2, 
+                        image.height / 2 - STREAM_IMAGE_HEIGHT / 2, 
+                        STREAM_IMAGE_WIDTH, 
+                        STREAM_IMAGE_HEIGHT, 
+                        0, 0, 
+                        STREAM_IMAGE_WIDTH, STREAM_IMAGE_HEIGHT);
+                        
+        } else if (scaleMode == STRETCH) {
+          
+          // Stretch source image to stream image
+          streamImage.copy(image, 0, 0, image.width, image.height, 0, 0, STREAM_IMAGE_WIDTH, STREAM_IMAGE_HEIGHT);
+          
+        }
         
-        // Scale image (only when not native video stream size)
-        if (image.width != STREAM_IMAGE_WIDTH || image.height != STREAM_IMAGE_HEIGHT) {
-            
-            switch (scaleMode) {
-                case CROP:
-                    streamImage.copy(image, 
-                            image.width / 2 - STREAM_IMAGE_WIDTH / 2, 
-                            image.height / 2 - STREAM_IMAGE_HEIGHT / 2, 
-                            STREAM_IMAGE_WIDTH, 
-                            STREAM_IMAGE_HEIGHT, 
-                            0, 0, 
-                            STREAM_IMAGE_WIDTH, STREAM_IMAGE_HEIGHT);
-                    break;
-                case STRETCH:
-                    streamImage.copy(image, 0, 0, image.width, image.height, 0, 0, STREAM_IMAGE_WIDTH, STREAM_IMAGE_HEIGHT);
-                    break;
-                }
+        // Update buffer with new image data
+        int bufferIndex = 3;
+        streamImage.loadPixels();
+        for (int i = 0; i < streamImage.pixels.length; i++) {
+
+            // Add colors to the buffer (each pixel is 32b int ARGB)
+            //buffer[bufferIndex++] = (byte) ((streamImage.pixels[i] >> 24) & 0xFF);  // A (We don't send alpha values to save bandwidth)
+            buffer[bufferIndex++] = (byte) ((streamImage.pixels[i] >> 16) & 0xFF);    // R
+            buffer[bufferIndex++] = (byte) ((streamImage.pixels[i] >> 8) & 0xFF);     // G
+            buffer[bufferIndex++] = (byte) ((streamImage.pixels[i]) & 0xFF);          // B
+
         }
 
-        // Send image packet over the network
         try {
-
-            // Initialize buffer
-            byte[] buffer = imageToBuffer(image);
 
             // Create and send packet
             DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
@@ -164,7 +205,6 @@ public class VideoWall {
       } catch (SocketException e) {
         e.printStackTrace();
       } catch (UnknownHostException e) {
-        e.printStackTrace();
         System.err.println("The host could not be found: " + host);
       }
           
@@ -175,50 +215,6 @@ public class VideoWall {
      */
     private void closeSocket() {
         socket.disconnect();
-    }
-    
-    /**
-     * Convert image to byte buffer
-     * 
-     * @param image
-     * @return
-     */
-    private static byte[] imageToBuffer(PImage image) {
-        
-        // Calculate pixel and buffer size
-        int pixelCount = image.width * image.height;
-        int bufferCount = pixelCount * 4 ;
-        
-        // Initialize buffer
-        byte[] buffer = new byte[bufferCount + 3];
-        int bufferIndex = 0;
-
-        // Set header (IMG)
-        buffer[bufferIndex++] = 0x49; // I
-        buffer[bufferIndex++] = 0x4D; // M
-        buffer[bufferIndex++] = 0x47; // G
-
-        // Load image data
-        image.loadPixels();
-
-        // Add image data to buffer
-        for (int i = 0; i < image.width * image.height; i++) {
-
-            // Get color (each pixel is 32b int ARGB)
-            int b = (image.pixels[i]) & 0xFF;
-            int g = (image.pixels[i] >> 8) & 0xFF;
-            int r = (image.pixels[i] >> 16) & 0xFF;
-            int a = (image.pixels[i] >> 24) & 0xFF;
-
-            buffer[bufferIndex++] = (byte) a;
-            buffer[bufferIndex++] = (byte) r;
-            buffer[bufferIndex++] = (byte) g;
-            buffer[bufferIndex++] = (byte) b;
-
-        }
-        
-        return buffer;
-
     }
     
     /**
